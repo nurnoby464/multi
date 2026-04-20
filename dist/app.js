@@ -5,7 +5,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 // src/app.ts — ONLY Express config, routes, middleware
 const express_1 = __importDefault(require("express"));
-const cors_1 = __importDefault(require("cors"));
 const helmet_1 = __importDefault(require("helmet"));
 const morgan_1 = __importDefault(require("morgan"));
 const super_admin_route_1 = require("./module/super_admin/super_admin.route");
@@ -40,28 +39,19 @@ const allowOrigin = [
 ];
 // Middlewares
 app.use((0, helmet_1.default)());
-app.use((0, cors_1.default)({
-    origin: (origin, callback) => {
-        if (!origin)
-            return callback(null, true);
-        if (allowOrigin.includes(origin)) {
-            callback(null, true);
-        }
-        else {
-            callback(null, false);
-        }
-    },
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
-    allowedHeaders: [
-        "Content-Type",
-        "Authorization",
-        "x-company-id",
-        "x-subdomain",
-    ],
-    exposedHeaders: ["X-Total-Count", "X-Total-Pages"],
-    credentials: true,
-}));
-app.options("*", (0, cors_1.default)());
+app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && allowOrigin.includes(origin)) {
+        res.setHeader("Access-Control-Allow-Origin", origin);
+    }
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization,x-company-id,x-subdomain");
+    res.setHeader("Access-Control-Expose-Headers", "X-Total-Count,X-Total-Pages");
+    if (req.method === "OPTIONS")
+        return res.sendStatus(204);
+    next();
+});
 app.use((0, morgan_1.default)("dev"));
 app.use(express_1.default.json());
 app.use(express_1.default.urlencoded({ extended: true }));
