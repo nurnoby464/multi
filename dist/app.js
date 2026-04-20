@@ -19,7 +19,6 @@ const product_route_1 = require("./module/product/product.route");
 const purchase_route_1 = require("./module/purchase/purchase.route");
 const product_variant_route_1 = require("./module/product-variant/product-variant.route");
 const public_route_1 = __importDefault(require("./module/public/public.route"));
-const appError_1 = require("./middlewares/appError");
 // routes
 // import authRoutes from './modules/auth/auth.routes';
 // import adminRoutes from './modules/admin/admin.routes';
@@ -35,11 +34,10 @@ const app = (0, express_1.default)();
 //         // add more production domains as needed
 //       ]
 //     : ["http://localhost:3000"];
-const allowOrigin = process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
-    : process.env.NODE_ENV === "production"
-        ? ["https://your-app.vercel.app"]
-        : ["http://localhost:3000"];
+const allowOrigin = [
+    "http://localhost:3000",
+    "https://multi-mauve-five.vercel.app"
+];
 // Middlewares
 app.use((0, helmet_1.default)());
 app.use((0, cors_1.default)({
@@ -50,7 +48,7 @@ app.use((0, cors_1.default)({
             callback(null, true);
         }
         else {
-            callback(new appError_1.AppError(`CORS blocked: ${origin}`), false);
+            callback(null, false);
         }
     },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
@@ -63,6 +61,7 @@ app.use((0, cors_1.default)({
     exposedHeaders: ["X-Total-Count", "X-Total-Pages"],
     credentials: true,
 }));
+app.options("*", (0, cors_1.default)());
 app.use((0, morgan_1.default)("dev"));
 app.use(express_1.default.json());
 app.use(express_1.default.urlencoded({ extended: true }));

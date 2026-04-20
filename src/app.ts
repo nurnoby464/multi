@@ -36,12 +36,10 @@ const app: Application = express();
 //       ]
 //     : ["http://localhost:3000"];
 
-const allowOrigin =
-  process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
-    : process.env.NODE_ENV === "production"
-      ? ["https://your-app.vercel.app"]
-      : ["http://localhost:3000"];
+const allowOrigin = [
+  "http://localhost:3000",
+  "https://multi-mauve-five.vercel.app"
+];
 
 // Middlewares
 app.use(helmet());
@@ -52,7 +50,7 @@ app.use(
       if (allowOrigin.includes(origin)) {
         callback(null, true);
       } else {
-       callback(new AppError(`CORS blocked: ${origin}`), false);
+     callback(null, false);
       }
     },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
@@ -66,6 +64,7 @@ app.use(
     credentials: true,
   }),
 );
+app.options("*", cors());
 app.use(morgan("dev"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
