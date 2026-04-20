@@ -1,0 +1,256 @@
+import {
+  ISessionPublic,
+  SessionLimitError,
+} from "./../../middlewares/appError";
+import { ObjectId, Types } from "mongoose";
+import { jwtConfig } from "./../../config/jwt.config";
+import { Request } from "express";
+import { AppError } from "../../middlewares/appError";
+import { ITokenPayload, JwtHelper } from "../../utils/jwtHelper";
+import User from "../super_admin/super_admin.schema";
+import { Secret } from "jsonwebtoken";
+import Session from "./auth.schema";
+import { enforceSessionLimit } from "../../utils/sessionHelper";
+import { RegisterCustomerInput } from "../super_admin/super_admin.validation";
+
+interface ILogin {
+  email: string;
+  password: string;
+}
+interface IUpdatePassword {
+  oldPassword: string;
+  newPassword: string;
+  userId: string;
+  sessionId: string;
+}
+const login = async (payload: ILogin, req: Request) => {
+  const MAX_SESSIONS = 6;
+  const { email, password } = payload;
+  const existing = await User.findOne({ email, is_active: true }).select(
+    "+password",
+  );
+  if (!existing) {
+    throw new AppError("This email user not found", 400);
+  }
+  const isMatch = await existing.comparePassword(password);
+  if (!isMatch) {
+    throw new AppError("Password incorrect!");
+  }
+  //check session limit
+  const activeSessions = await Session.find({
+    userId: existing._id,
+    valid: true,
+  })
+    .sort({ updatedAt: -1 }) // newest first for display
+    .select("_id user_agent userId ip createdAt updatedAt")
+    .lean();
+  if (activeSessions.length >= MAX_SESSIONS) {
+    const sessionList: ISessionPublic[] = activeSessions?.map((session) => ({
+      sessionId: session._id.toString(),
+      user_agent: session.user_agent,
+      userId: session.userId.toString(),
+      ip: session.ip,
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt,
+    }));
+    throw new SessionLimitError(sessionList);
+  }
+  // await enforceSessionLimit(existing._id);
+
+  // Layer 1 — reuse or create session
+  const session = await Session.findOneAndUpdate(
+    {
+      userId: existing._id,
+      valid: true,
+      user_agent: req.headers["user-agent"] ?? null,
+    },
+    {
+      $set: {
+        ip: req.ip ?? null,
+      },
+      $setOnInsert: {
+        userId: existing._id,
+        valid: true,
+        user_agent: req.headers["user-agent"] ?? null,
+      },
+    },
+    {
+      upsert: true,
+      returnDocument:"after",
+      runValidators: true,
+    },
+  );
+  if (!session) {
+    throw new AppError("Session created failed");
+  }
+  const data: ITokenPayload = {
+    _id: existing._id,
+    email: existing.email,
+    name: existing.name,
+    role: existing.role,
+    company_id: existing.company_id ?? null,
+    sessionId: session._id.toString(),
+    passwordChangedAt: existing.passwordChangedAt?.getTime() ?? null
+  };
+  const accessToken = await JwtHelper.generateToken({
+    data,
+    secret: jwtConfig.access.secret as Secret,
+    expiresIn: jwtConfig.access.expiresIn,
+  });
+  const refreshToken = await JwtHelper.generateToken({
+    data,
+    secret: jwtConfig.refresh.secret,
+    expiresIn: jwtConfig.refresh.expiresIn,
+  });
+  const result = await User.findByIdAndUpdate(
+    existing._id,
+    { last_login: new Date() },
+    { returnDocument:"after", runValidators: true },
+  );
+  if (!result) {
+    throw new AppError("Last login not updated");
+  }
+  const user = result.toJSON();
+  return {
+    user,
+    accessToken,
+    refreshToken,
+  };
+};
+
+// ─── Logout ───────────────────────────────────────────────
+const logout = async (refreshToken: string) => {
+  if (!refreshToken) throw new AppError("Already logged out", 400);
+  const decoded = JwtHelper.verifyToken({
+    token: refreshToken,
+    secret: jwtConfig.refresh.secret,
+  });
+  if (!decoded) {
+    throw new AppError("Token data not found", 400);
+  }
+  await Session.findByIdAndUpdate(decoded.sessionId, {
+    valid: false,
+  });
+};
+
+// ─── Refresh ──────────────────────────────────────────────
+const refresh = async (refreshToken: string) => {
+  // 1. verify refresh token
+  let decoded: { sessionId: string };
+  try {
+    decoded = JwtHelper.verifyToken({
+      token: refreshToken,
+      secret: jwtConfig.refresh.secret,
+    }) as { sessionId: string };
+  } catch {
+    throw new AppError("Invalid or expired refresh token", 401);
+  }
+  // 2. find session
+  const session = await Session.findById(decoded.sessionId);
+  if (!session || !session.valid) {
+    throw new AppError("Session expired. Please log in again", 401);
+  }
+
+  // 3. find user
+  const user = await User.findOne({ _id: session.userId, is_active: true });
+  if (!user) {
+    throw new AppError("User no longer exists", 401);
+  }
+
+  // 4. issue new access token
+  const newAccessToken = JwtHelper.generateToken({
+    data: {
+      _id: user._id,
+      sessionId: session._id.toString(),
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      company_id: user.company_id ?? null,
+      passwordChangedAt: user.passwordChangedAt?.getTime() ?? null
+    },
+    secret: jwtConfig.access.secret,
+    expiresIn: jwtConfig.access.expiresIn,
+  });
+
+  return { accessToken: newAccessToken };
+};
+const removeSession = async (sessionId: string, userId: string) => {
+  const session = await Session.findOneAndDelete({
+    _id: new Types.ObjectId(sessionId),
+    userId: new Types.ObjectId(userId),
+  });
+  if (!session) throw new AppError("Session not found", 404);
+};
+
+const updatePassword = async (payload: IUpdatePassword) => {
+  const { userId, sessionId, oldPassword, newPassword } = payload;
+  const user = await User.findOne({
+    _id: new Types.ObjectId(userId),
+    is_active: true,
+  }).select("+password");
+  if (!user) throw new AppError("User not found", 404);
+  // check old password
+  const isMatch = await user.comparePassword(oldPassword);
+  if (!isMatch) throw new AppError("Old password is incorrect", 400);
+  // check new password is same as old password
+  const isSame = await user.comparePassword(newPassword);
+  if (isSame) {
+    throw new AppError("New password must be different from old password", 400);
+  }
+
+  // update password
+
+  user.password = newPassword;
+  user.passwordChangedAt = new Date();
+  await user.save();
+
+  await Session.deleteMany({
+    userId: user._id,
+    _id: { $ne: new Types.ObjectId(sessionId) },
+  });
+  return {
+    message: "Password updated. All other sessions have been logged out.",
+  };
+};
+
+ const registerCustomer = async (
+  company_id: Types.ObjectId,
+  input: RegisterCustomerInput
+) => {
+  const { name, phone, email, password } = input;
+
+  // 1. check duplicate phone under same company
+  const existing = await User.findOne({
+    company_id,
+    email,
+    role: "customer",
+  });
+
+  if (existing) {
+    throw new AppError("This email already registered", 409);
+  }
+
+  // 3. create user — NO customer CRM doc yet
+  const user = await User.create({
+    company_id,
+    name,
+    email,
+    password,
+    role: "customer",
+    is_active: true,
+  });
+
+  // 4. strip password before returning
+  const { password: _, ...safeUser } = user.toObject();
+
+  return safeUser;
+};
+
+export const AuthServices = {
+  login,
+  logout,
+  refresh,
+  removeSession,
+  updatePassword,
+  registerCustomer
+};

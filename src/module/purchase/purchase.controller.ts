@@ -1,0 +1,92 @@
+// src/module/purchase/purchase.controller.ts
+import { Request, Response } from "express";
+import { asyncHandler } from "../../utils/asyncHandler";
+import { ApiResponse } from "../../utils/ApiResponse";
+import { AUDIT_ACTIONS } from "../audit/audit.interface";
+import * as PurchaseService from "./purchase.service";
+import { auditLog } from "../../utils/auditLogger";
+import mongoose from "mongoose";
+import { CreatePurchaseInput, ListPurchaseQuery } from "./purchase.validation";
+
+// ─── Create ───────────────────────────────────────────────
+export const createPurchase = asyncHandler(
+  async (req: Request, res: Response) => {
+    const company_id = new mongoose.Types.ObjectId(req.user.company_id!);
+    const createdBy = new mongoose.Types.ObjectId(req.user._id!);
+    const purchase = await PurchaseService.createPurchase(
+      { ...(req.body as CreatePurchaseInput), company_id, createdBy },
+      req,
+    );
+    
+    return ApiResponse.created(res, purchase, "Purchase created successfully");
+  },
+);
+
+// ─── Get all ──────────────────────────────────────────────
+export const getPurchases = asyncHandler(
+  async (req: Request, res: Response) => {
+    const company_id = new mongoose.Types.ObjectId(req.user.company_id!);
+
+    const query = req.validatedQuery as {
+      page: number;
+      limit: number;
+      vendor_id?: string;
+      status?: "pending" | "partial" | "paid";
+      from_date?: Date;
+      to_date?: Date;
+      sort_order: string;
+    };
+
+    const { purchases, total } = await PurchaseService.getPurchases(
+      company_id,
+      req.validatedQuery as ListPurchaseQuery,
+    );
+
+    return ApiResponse.paginated(
+      res,
+      "Purchase get successfully!",
+      purchases,
+      total,
+      query.page,
+      query.limit,
+    );
+  },
+);
+
+// ─── Get one ──────────────────────────────────────────────
+export const getPurchaseById = asyncHandler(
+  async (req: Request, res: Response) => {
+    const purchase = await PurchaseService.getPurchaseById({
+      id: req.params.id as string,
+      company_id: req.user.company_id!,
+    });
+
+    return ApiResponse.success(res, purchase);
+  },
+);
+export const updatePayment = asyncHandler(
+  async (req: Request, res: Response) => {
+    const company_id = new mongoose.Types.ObjectId(req.user.company_id!);
+    const updatedPurchase = await PurchaseService.updatePayment(
+      req.params.id as string,
+      company_id,
+      req.body,
+      req,
+    );
+    return ApiResponse.success(
+      res,
+      updatedPurchase,
+      "Purchase payment updated successfully",
+    );
+  },
+);
+
+export const remove = asyncHandler(async (req: Request, res: Response) => {
+  const company_id = new mongoose.Types.ObjectId(req.user.company_id!);
+  await PurchaseService.deletePurchase(
+    req.params.id as string,
+    company_id,
+    req,
+  );
+  return ApiResponse.success(res, null, "Purchase deleted successfully");
+});
