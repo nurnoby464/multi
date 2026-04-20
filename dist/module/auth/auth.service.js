@@ -96,6 +96,7 @@ const login = async (payload, req) => {
 };
 // ─── Logout ───────────────────────────────────────────────
 const logout = async (refreshToken) => {
+    console.log(refreshToken);
     if (!refreshToken)
         throw new appError_2.AppError("Already logged out", 400);
     const decoded = jwtHelper_1.JwtHelper.verifyToken({

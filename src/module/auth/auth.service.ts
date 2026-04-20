@@ -120,6 +120,7 @@ const login = async (payload: ILogin, req: Request) => {
 
 // ─── Logout ───────────────────────────────────────────────
 const logout = async (refreshToken: string) => {
+  console.log(refreshToken)
   if (!refreshToken) throw new AppError("Already logged out", 400);
   const decoded = JwtHelper.verifyToken({
     token: refreshToken,
