@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getAllCategories = exports.getProductById = exports.getProduct = void 0;
+exports.getAllCategories = exports.getProductById = exports.dbTest = exports.getProduct = void 0;
 const product_schema_1 = __importDefault(require("../product/product.schema"));
 const mongoose_1 = require("mongoose");
 const product_variant_schema_1 = __importDefault(require("../product-variant/product-variant.schema"));
@@ -40,6 +40,20 @@ const getProduct = async (req, query) => {
     return { products, total, page, limit };
 };
 exports.getProduct = getProduct;
+const dbTest = async (req, query) => {
+    const filter = { company_id: "69db7c91dfc260658b4a384a" };
+    const skip = (1 - 1) * 20;
+    const [products, total] = await Promise.all([
+        product_schema_1.default.find(filter)
+            .select("-buying_price -profit -profit_margin -low_stock_alert")
+            .skip(skip)
+            .limit(20)
+            .lean(),
+        product_schema_1.default.countDocuments(),
+    ]);
+    return { products, total };
+};
+exports.dbTest = dbTest;
 const getProductById = async (payload, req) => {
     const product_id = payload.id;
     const company_id = new mongoose_1.Types.ObjectId(req.company?._id);

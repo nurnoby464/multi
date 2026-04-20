@@ -49,6 +49,24 @@ export const getProduct = async (req: Request, query: GetProductQuery) => {
   return { products, total,page,limit };
 };
 
+export const dbTest = async (req: Request, query: GetProductQuery) => {
+  
+  const filter: any = { company_id: "69db7c91dfc260658b4a384a"};
+
+  
+  const skip = (1 - 1) * 20;
+
+  const [products, total] = await Promise.all([
+    Product.find(filter)
+      .select("-buying_price -profit -profit_margin -low_stock_alert")
+      .skip(skip)
+      .limit(20)
+      .lean(),
+    Product.countDocuments(),
+  ]);
+  return { products, total };
+};
+
 export const getProductById = async (
   payload: GetProductParamsQuery,
   req: Request,

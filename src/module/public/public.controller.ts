@@ -11,6 +11,15 @@ export const getProduct = async (req: Request, res: Response) => {
   return ApiResponse.paginated(res,"Products retrieved successfully", products,total,page,limit );
 };
 
+export const dbTest = async (req: Request, res: Response) => {
+  const query = req.validatedQuery;
+  const {products,total} = await PublicService.dbTest(
+    req,
+    query as GetProductQuery,
+  );
+  return ApiResponse.paginated(res,"Products retrieved successfully", products,total,1,20 );
+};
+
 export const getProductById = async (req: Request, res: Response) => {
   const id = req.params.id as string;
   const products = await PublicService.getProductById({ id }, req);
