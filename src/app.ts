@@ -27,14 +27,21 @@ import { AppError } from "./middlewares/appError";
 // import publicRoutes from './modules/public/public.routes';
 
 const app: Application = express();
+// const allowOrigin =
+//   process.env.NODE_ENV === "production"
+//     ? [
+//         "https://your-app.vercel.app",
+//         "https://your-app.herokuapp.com",
+//         // add more production domains as needed
+//       ]
+//     : ["http://localhost:3000"];
+
 const allowOrigin =
-  process.env.NODE_ENV === "production"
-    ? [
-        "https://your-app.vercel.app",
-        "https://your-app.herokuapp.com",
-        // add more production domains as needed
-      ]
-    : ["http://localhost:3000"];
+  process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
+    : process.env.NODE_ENV === "production"
+      ? ["https://your-app.vercel.app"]
+      : ["http://localhost:3000"];
 
 // Middlewares
 app.use(helmet());
@@ -45,7 +52,7 @@ app.use(
       if (allowOrigin.includes(origin)) {
         callback(null, true);
       } else {
-        callback(new AppError(`CORS blocked: ${origin}`));
+       callback(new AppError(`CORS blocked: ${origin}`), false);
       }
     },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
